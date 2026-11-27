@@ -451,98 +451,12 @@
       transform: translate(-50%, -50%) scale(1);
     }
 
-    /* 우측 상단 모서리가 바람에 팔랑이는 효과 */
-    .parchment-letter::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      right: 0;
-      width: 52px;
-      height: 52px;
-      background: linear-gradient(225deg, rgba(250, 240, 214, 0.95) 0%, rgba(218, 195, 148, 0.92) 52%, rgba(168, 134, 82, 0.72) 100%);
-      clip-path: polygon(0 0, 100% 0, 100% 100%);
-      transform-origin: 0% 100%;
-      box-shadow: -3px 3px 8px rgba(48, 30, 10, 0.28);
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .parchment-letter.is-fluttering {
-      opacity: 1;
-      animation: letterBodyFlutter 1.2s ease-in-out forwards;
-    }
-
-    .parchment-letter.is-fluttering::after {
-      opacity: 1;
-      animation: cornerWindFlutter 1.2s ease-in-out forwards;
-    }
-
-    @keyframes cornerWindFlutter {
-      0% {
-        transform: rotate3d(1, 1, 0, 0deg) scale(0.85);
-        opacity: 0;
-      }
-      18% {
-        transform: rotate3d(1, 1, 0, -34deg) skewX(-6deg) scale(1);
-        opacity: 0.95;
-      }
-      38% {
-        transform: rotate3d(1, 1, 0, -10deg) skewX(-2deg) scale(0.95);
-        opacity: 0.88;
-      }
-      60% {
-        transform: rotate3d(1, 1, 0, -46deg) skewX(-9deg) scale(1.04);
-        opacity: 0.98;
-      }
-      80% {
-        transform: rotate3d(1, 1, 0, -18deg) skewX(-4deg) scale(0.98);
-        opacity: 0.92;
-      }
-      100% {
-        transform: rotate3d(1, 1, 0, -54deg) skewX(-11deg) scale(1.06);
-        opacity: 1;
-      }
-    }
-
-    @keyframes letterBodyFlutter {
-      0% {
-        transform: translate(-50%, -50%) scale(1) rotate(0deg);
-      }
-      22% {
-        transform: translate(-49%, -51%) scale(1) rotate(-1.2deg) skewY(-0.8deg);
-      }
-      45% {
-        transform: translate(-50%, -50%) scale(1) rotate(0.4deg) skewY(0.3deg);
-      }
-      70% {
-        transform: translate(-48%, -52%) scale(1.01) rotate(-1.8deg) skewY(-1.1deg);
-      }
-      100% {
-        transform: translate(-47%, -53%) scale(1.01) rotate(1.5deg) skewY(-0.6deg);
-      }
-    }
-
     .parchment-letter.is-flying {
-      animation: letterWindFly 1.55s cubic-bezier(0.32, 0.04, 0.25, 1) forwards;
-    }
-
-    @keyframes letterWindFly {
-      0% {
-        opacity: 1;
-        transform: translate(-47%, -53%) scale(1.01) rotate(1.5deg);
-      }
-      28% {
-        opacity: 0.96;
-        transform: translate(-38%, -72%) scale(0.76) rotate(8deg) skewY(-3deg);
-      }
-      68% {
-        opacity: 0.55;
-        transform: translate(-48%, -118%) scale(0.38) rotate(-8deg) skewY(2deg);
-      }
-      100% {
-        opacity: 0;
-        transform: translate(-56%, -152%) scale(0.18) rotate(-16deg);
-      }
+      opacity: 0;
+      transform: translate(-50%, -148%) scale(0.22) rotate(-14deg);
+      transition:
+        transform 1.55s cubic-bezier(0.32, 0.02, 0.25, 1),
+        opacity 1.35s ease 0.25s;
     }
 
     .parchment-crest {
@@ -2183,7 +2097,7 @@
         envelopeFloat.classList.remove('is-paused');
         envelopeFlap.classList.remove('is-open');
         waxSealBtn.classList.remove('is-cracked', 'is-highlighted');
-        parchmentLetter.classList.remove('is-visible', 'is-fluttering', 'is-flying');
+        parchmentLetter.classList.remove('is-visible', 'is-flying');
         parchmentBodyText.textContent = '';
         parchmentSignText.textContent = '';
         parchmentCursor.classList.remove('is-active');
@@ -2238,17 +2152,12 @@
             scheduleLetterTimer(stepSign, delay);
           } else {
             parchmentCursor.classList.remove('is-active');
-            // 문장 완료 후 우측 상단 모서리가 바람에 팔랑이다가 자연스럽게 날아감
+            // 문장 완료 후 잠시 여운 뒤 편지가 날아가며 밤하늘을 비추고 인트로로 연결
             scheduleLetterTimer(() => {
               if (introFinished) return;
-              parchmentLetter.classList.add('is-fluttering');
-              scheduleLetterTimer(() => {
-                if (introFinished) return;
-                parchmentLetter.classList.remove('is-fluttering');
-                parchmentLetter.classList.add('is-flying');
-                startIntro();
-              }, 1150);
-            }, 750);
+              parchmentLetter.classList.add('is-flying');
+              startIntro();
+            }, 950);
           }
         }
 
@@ -2302,7 +2211,7 @@
 
         skipIntroBtn.style.display = 'none';
         letterStage.classList.add('is-hidden');
-        parchmentLetter.classList.remove('is-visible', 'is-fluttering', 'is-flying');
+        parchmentLetter.classList.remove('is-visible', 'is-flying');
         parchmentCursor.classList.remove('is-active');
         introOverlay.classList.add('is-fading-out');
 
