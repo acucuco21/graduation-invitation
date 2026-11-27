@@ -2126,10 +2126,8 @@
 
           ctx.restore();
 
-          // 3) 호수 건너편 호그와트풍 성 (항상 불투명)
-          if (!isSkyBridge) {
-            drawCastle(ctx, w, h, horizonY, cameraRise, t, sceneAlpha);
-          }
+          // 3) 호수 건너편 호그와트풍 성 및 언덕 (앵글이 내려오는 이전 씬부터 수평선 위에 미리 렌더링)
+          drawCastle(ctx, w, h, horizonY, cameraRise, t, sceneAlpha);
 
           // 3-B) 밤하늘 구름 유지 (앵글 하강 시 위쪽으로 자연스럽게 빠져나감)
           if (isSkyBridge) {
