@@ -1643,6 +1643,21 @@
         };
       });
 
+      /* 성 앞에 쌓여 있다가 카메라가 전진하며 양옆·뒤로 갈라지는 안개 입자 */
+      const castleMistPuffs = Array.from({ length: 24 }, (_, idx) => {
+        const side = idx % 2 === 0 ? -1 : 1;
+        const depth = (idx % 4) / 3;
+        return {
+          x: 0.5 + side * (0.02 + rand() * 0.28),
+          yOffset: -0.16 + rand() * 0.22,
+          radius: 0.16 + rand() * 0.18 + depth * 0.05,
+          side,
+          depth,
+          hue: idx % 3 === 0 ? [24, 62, 108] : idx % 3 === 1 ? [44, 106, 158] : [78, 156, 206],
+          alpha: 0.34 + rand() * 0.22
+        };
+      });
+
       const castleWindows = [];
       /* 중앙 대첨탑, 좌우 첨탑, 대연회장 등 창문 배치 (성 중심 상대 좌표 -1..1) */
       const windowSpecs = [
@@ -1684,10 +1699,9 @@
         introCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
-      /* 성 실루엣 및 창문 불빛 그리기 (호수를 가로지르는 앵글 + 서서히 모습 드러냄) */
+      /* 성 실루엣 및 창문 불빛 그리기 (항상 불투명 유지, 앞쪽 안개가 걷히며 드러남) */
       function drawCastle(ctx, w, h, horizonY, cameraRise, t, sceneAlpha) {
-        const castleAppear = smoothstep(4.6, 10.2, t);
-        if (castleAppear <= 0.001) return;
+        if (sceneAlpha <= 0.002) return;
 
         const lakeTraverse = smoothstep(2.6, 12.0, t);
         const baseScale = Math.min(w * 0.92, h * 0.62) * lerp(0.52, 1.06, lakeTraverse);
@@ -1695,7 +1709,7 @@
         const cy = horizonY;
 
         ctx.save();
-        ctx.globalAlpha = sceneAlpha * castleAppear;
+        ctx.globalAlpha = sceneAlpha;
 
         // 성 뒤 은은한 달빛 청색 후광
         const backGlow = ctx.createRadialGradient(
@@ -2027,6 +2041,34 @@
         ctx.restore();
       }
 
+      /* 성 앞을 가린 반투명 안개가 앵글 전진에 따라 양옆으로 치워지고 뒤로 넘어가는 연출 */
+      function drawPartingCastleMist(ctx, w, h, horizonY, t, sceneAlpha) {
+        const partProgress = smoothstep(3.8, 9.8, t);
+        if (partProgress >= 0.999 || sceneAlpha <= 0.002) return;
+
+        const maxDim = Math.max(w, h);
+        const fadeOut = 1 - smoothstep(0.58, 1.0, partProgress);
+        if (fadeOut <= 0.002) return;
+
+        ctx.save();
+        castleMistPuffs.forEach((m) => {
+          const px = m.x * w + m.side * Math.pow(partProgress, 1.1) * (0.58 + m.depth * 0.38) * w;
+          const py = horizonY + m.yOffset * h + Math.pow(partProgress, 1.35) * (0.36 + m.depth * 0.28) * h;
+          const r = m.radius * maxDim * lerp(1.0, 2.55, Math.pow(partProgress, 1.25));
+          const a = m.alpha * sceneAlpha * fadeOut;
+
+          const g = ctx.createRadialGradient(px, py, r * 0.08, px, py, r);
+          g.addColorStop(0, `rgba(${m.hue[0]}, ${m.hue[1]}, ${m.hue[2]}, ${a})`);
+          g.addColorStop(0.55, `rgba(${m.hue[0]}, ${m.hue[1]}, ${m.hue[2]}, ${a * 0.42})`);
+          g.addColorStop(1, `rgba(${m.hue[0]}, ${m.hue[1]}, ${m.hue[2]}, 0)`);
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.restore();
+      }
+
       /* 메인 인트로 프레임 렌더러 */
       function renderIntroFrame(elapsed) {
         const w = window.innerWidth;
@@ -2127,8 +2169,11 @@
 
           ctx.restore();
 
-          // 3) 호수 건너편 호그와트풍 성
-          drawCastle(ctx, w, h, horizonY, cameraRise, t, sceneAlpha);
+          // 3) 호수 건너편 호그와트풍 성 (항상 불투명) + 성 앞을 가렸다 양옆·뒤로 치워지는 안개
+          if (!isSkyBridge) {
+            drawCastle(ctx, w, h, horizonY, cameraRise, t, sceneAlpha);
+            drawPartingCastleMist(ctx, w, h, horizonY, t, sceneAlpha);
+          }
 
           // 3-B) 밤하늘 구름 유지 (앵글 하강 시 위쪽으로 자연스럽게 빠져나감)
           if (isSkyBridge) {
