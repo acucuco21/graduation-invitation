@@ -26,7 +26,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p _site
-          cp index.html graduation-invitation.html _site/
+          cp index.html _site/
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
