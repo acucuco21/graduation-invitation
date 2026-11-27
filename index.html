@@ -486,33 +486,47 @@
 
     .parchment-message {
       margin: 0;
-      font-size: clamp(19px, 4.9vw, 22px);
+      font-size: clamp(18.5px, 4.7vw, 21.5px);
       font-weight: 600;
-      line-height: 1.78;
+      line-height: 1.85;
       letter-spacing: 0.02em;
       color: #23170c;
       word-break: keep-all;
-      min-height: 3.6em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
     }
 
-    .parchment-cursor {
+    .handwrite-line {
       display: inline-block;
-      width: 2px;
-      height: 1.05em;
-      margin-left: 2px;
-      vertical-align: -0.14em;
-      background: #2f1f10;
+      white-space: nowrap;
+      --write-p: 0%;
+      -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--write-p) - 2.5%), rgba(0, 0, 0, 0.45) var(--write-p), transparent calc(var(--write-p) + 2.2%));
+      mask-image: linear-gradient(90deg, #000 calc(var(--write-p) - 2.5%), rgba(0, 0, 0, 0.45) var(--write-p), transparent calc(var(--write-p) + 2.2%));
+    }
+
+    .handwrite-line.is-done {
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+
+    .parchment-quill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 34px;
+      height: 34px;
+      pointer-events: none;
       opacity: 0;
+      z-index: 5;
+      transform-origin: 4px 30px;
+      filter: drop-shadow(1px 3px 3px rgba(36, 20, 6, 0.38));
+      transition: opacity 0.22s ease;
     }
 
-    .parchment-cursor.is-active {
+    .parchment-quill.is-writing {
       opacity: 1;
-      animation: quillBlink 0.68s steps(2, start) infinite;
-    }
-
-    @keyframes quillBlink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.15; }
     }
 
     .parchment-sign {
@@ -1302,9 +1316,18 @@
       </svg>
       <div class="parchment-divider" aria-hidden="true"></div>
       <div class="parchment-body-wrap">
-        <p class="parchment-message"><span id="parchmentBodyText"></span><span id="parchmentCursor" class="parchment-cursor" aria-hidden="true"></span></p>
+        <p class="parchment-message">
+          <span id="handwriteLine1" class="handwrite-line">당신을 제 9회 샬롬자유학교</span>
+          <span id="handwriteLine2" class="handwrite-line">졸업식에 초대합니다.</span>
+        </p>
       </div>
-      <p id="parchmentSignText" class="parchment-sign"></p>
+      <p class="parchment-sign"><span id="handwriteSign" class="handwrite-line">- 샬롬자유학교 -</span></p>
+      <!-- 필기 궤적을 따라가는 깃펜 -->
+      <svg id="parchmentQuill" class="parchment-quill" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M8,56 L16,44 L54,8 C56,14 52,26 42,36 L22,48 Z" fill="#f7eed7" stroke="#3a2715" stroke-width="2" stroke-linejoin="round" />
+        <path d="M12,52 L48,14" stroke="#785630" stroke-width="1.6" stroke-linecap="round" />
+        <path d="M6,58 L14,49 L17,52 Z" fill="#23170c" />
+      </svg>
     </article>
 
     <button id="skipIntroBtn" class="intro-skip-btn" type="button" aria-label="인트로 건너뛰기">건너뛰기</button>
@@ -1531,9 +1554,11 @@
       const envelopeFlap = document.getElementById('envelopeFlap');
       const waxSealBtn = document.getElementById('waxSealBtn');
       const parchmentLetter = document.getElementById('parchmentLetter');
-      const parchmentBodyText = document.getElementById('parchmentBodyText');
-      const parchmentSignText = document.getElementById('parchmentSignText');
-      const parchmentCursor = document.getElementById('parchmentCursor');
+      const handwriteLine1 = document.getElementById('handwriteLine1');
+      const handwriteLine2 = document.getElementById('handwriteLine2');
+      const handwriteSign = document.getElementById('handwriteSign');
+      const parchmentQuill = document.getElementById('parchmentQuill');
+      const handwriteLines = [handwriteLine1, handwriteLine2, handwriteSign];
 
       const SKY_BRIDGE_DURATION = 3.6;
       const SCENE_JOIN_T = 2.3;
@@ -1546,6 +1571,7 @@
       let introFinished = false;
       let waxClicked = false;
       let letterTimers = [];
+      let handwriteRafId = 0;
 
       function scheduleLetterTimer(fn, delay) {
         const id = setTimeout(fn, delay);
@@ -1556,11 +1582,18 @@
       function clearLetterTimers() {
         letterTimers.forEach((id) => clearTimeout(id));
         letterTimers = [];
+        if (handwriteRafId) {
+          cancelAnimationFrame(handwriteRafId);
+          handwriteRafId = 0;
+        }
       }
 
-      /* 깃펜 사각거리는 효과음 (Web Audio API 오프라인 합성) */
+      /* 깃펜 '사각사각' 연속 종이 마찰 효과음 (Web Audio API 오프라인 합성) */
       let penAudioCtx = null;
       let penNoiseBuffer = null;
+      let penSourceNode = null;
+      let penBandpassNode = null;
+      let penGainNode = null;
 
       function ensurePenAudioCtx() {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1568,14 +1601,24 @@
         if (!penAudioCtx) {
           penAudioCtx = new AudioCtx();
           const sampleRate = penAudioCtx.sampleRate;
-          const length = Math.floor(sampleRate * 0.065);
+          const length = Math.floor(sampleRate * 2.4);
           penNoiseBuffer = penAudioCtx.createBuffer(1, length, sampleRate);
           const data = penNoiseBuffer.getChannelData(0);
-          let last = 0;
+          let b0 = 0, b1 = 0, b2 = 0;
           for (let i = 0; i < length; i++) {
             const white = Math.random() * 2 - 1;
-            last = (last + 0.08 * white) / 1.08;
-            data[i] = (white * 0.65 + last * 1.4) * 0.55;
+            b0 = 0.997 * b0 + white * 0.029;
+            b1 = 0.985 * b1 + white * 0.032;
+            b2 = 0.950 * b2 + white * 0.048;
+            // 부드러운 종이 섬유질 결 + 핑크 노이즈 조합
+            data[i] = (b0 + b1 + b2 + white * 0.16) * 0.28;
+          }
+          // 루프 경계 클릭 방지 크로스페이드
+          const fadeSamples = Math.min(800, Math.floor(length * 0.05));
+          for (let i = 0; i < fadeSamples; i++) {
+            const t = i / fadeSamples;
+            data[i] *= t;
+            data[length - 1 - i] *= t;
           }
         }
         if (penAudioCtx.state === 'suspended') {
@@ -1584,29 +1627,68 @@
         return penAudioCtx;
       }
 
-      function playQuillScratch() {
+      function startQuillSound() {
         const ctx = ensurePenAudioCtx();
         if (!ctx || !penNoiseBuffer) return;
-        const now = ctx.currentTime;
+        stopQuillSound();
+
         const src = ctx.createBufferSource();
         src.buffer = penNoiseBuffer;
-        src.playbackRate.value = 0.88 + Math.random() * 0.28;
+        src.loop = true;
 
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.value = 2100 + Math.random() * 950;
-        filter.Q.value = 2.3;
+        const highpass = ctx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 900;
+
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.value = 2300;
+        bandpass.Q.value = 1.45;
 
         const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.001, now);
-        gain.gain.exponentialRampToValueAtTime(0.11, now + 0.008);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.052);
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
 
-        src.connect(filter);
-        filter.connect(gain);
+        src.connect(highpass);
+        highpass.connect(bandpass);
+        bandpass.connect(gain);
         gain.connect(ctx.destination);
-        src.start(now);
-        src.stop(now + 0.06);
+        src.start();
+
+        penSourceNode = src;
+        penBandpassNode = bandpass;
+        penGainNode = gain;
+      }
+
+      function updateQuillSound(active, strokePhase) {
+        if (!penAudioCtx || !penGainNode || !penBandpassNode) return;
+        const now = penAudioCtx.currentTime;
+        if (!active) {
+          penGainNode.gain.setTargetAtTime(0.0001, now, 0.028);
+          return;
+        }
+        const wave = 0.5 + 0.5 * Math.sin(strokePhase) * Math.cos(strokePhase * 0.37);
+        const targetGain = 0.04 + wave * 0.095;
+        const targetFreq = 1900 + wave * 1500;
+        penGainNode.gain.setTargetAtTime(targetGain, now, 0.022);
+        penBandpassNode.frequency.setTargetAtTime(targetFreq, now, 0.03);
+      }
+
+      function stopQuillSound() {
+        if (penGainNode && penAudioCtx) {
+          try {
+            penGainNode.gain.setTargetAtTime(0.0001, penAudioCtx.currentTime, 0.02);
+          } catch (_) {}
+        }
+        const src = penSourceNode;
+        penSourceNode = null;
+        penBandpassNode = null;
+        penGainNode = null;
+        if (src) {
+          setTimeout(() => {
+            try { src.stop(); } catch (_) {}
+            try { src.disconnect(); } catch (_) {}
+          }, 80);
+        }
       }
 
       /* 정적 랜덤 시드 기반 별·창문·안개 입자 생성 */
@@ -2291,9 +2373,12 @@
         envelopeFlap.classList.remove('is-open');
         waxSealBtn.classList.remove('is-cracked', 'is-highlighted');
         parchmentLetter.classList.remove('is-visible', 'is-flying');
-        parchmentBodyText.textContent = '';
-        parchmentSignText.textContent = '';
-        parchmentCursor.classList.remove('is-active');
+        parchmentQuill.classList.remove('is-writing');
+        stopQuillSound();
+        handwriteLines.forEach((el) => {
+          el.classList.remove('is-done');
+          el.style.setProperty('--write-p', '0%');
+        });
 
         // 검은 화면에서 편지봉투가 아래에서 올라옴
         requestAnimationFrame(() => {
@@ -2311,50 +2396,84 @@
       }
 
       function typeLetterMessage() {
-        const bodyMessage = '당신을 제 9회 샬롬자유학교 졸업식에 초대합니다.';
-        const signMessage = '- 샬롬자유학교 -';
-        let bodyIdx = 0;
-        let signIdx = 0;
+        const phases = [
+          { el: handwriteLine1, duration: 1.55, pauseAfter: 0.20, strokes: 16 },
+          { el: handwriteLine2, duration: 1.15, pauseAfter: 0.28, strokes: 12 },
+          { el: handwriteSign, duration: 1.05, pauseAfter: 0.0, strokes: 10 }
+        ];
 
-        parchmentCursor.classList.add('is-active');
+        let phaseIdx = 0;
+        let phaseStart = performance.now();
+        let inPause = false;
 
-        function stepBody() {
-          if (introFinished) return;
-          if (bodyIdx < bodyMessage.length) {
-            const ch = bodyMessage[bodyIdx++];
-            parchmentBodyText.textContent += ch;
-            if (ch.trim() !== '') {
-              playQuillScratch();
-            }
-            const delay = ch === ' ' ? 55 : 78 + Math.random() * 28;
-            scheduleLetterTimer(stepBody, delay);
-          } else {
-            scheduleLetterTimer(stepSign, 380);
+        startQuillSound();
+        parchmentQuill.classList.add('is-writing');
+
+        function stepHandwrite(now) {
+          if (introFinished) {
+            stopQuillSound();
+            return;
           }
-        }
+          const cur = phases[phaseIdx];
+          if (!cur) return;
 
-        function stepSign() {
-          if (introFinished) return;
-          if (signIdx < signMessage.length) {
-            const ch = signMessage[signIdx++];
-            parchmentSignText.textContent += ch;
-            if (ch.trim() !== '') {
-              playQuillScratch();
+          const elapsed = (now - phaseStart) / 1000;
+
+          if (!inPause) {
+            const rawU = clamp(elapsed / cur.duration, 0, 1);
+            // 한 획 한 획 밀고 당기는 필기 리듬 적용
+            const strokeRipple = rawU > 0.03 && rawU < 0.97
+              ? 0.011 * Math.sin(rawU * Math.PI * cur.strokes * 2)
+              : 0;
+            const pct = clamp((rawU + strokeRipple) * 100, 0, 100);
+            cur.el.style.setProperty('--write-p', `${pct.toFixed(2)}%`);
+
+            // 깃펜 펜촉 위치 동기화 및 손목 필기 진동
+            const letterRect = parchmentLetter.getBoundingClientRect();
+            const lineRect = cur.el.getBoundingClientRect();
+            const qx = lineRect.left - letterRect.left + lineRect.width * (pct / 100);
+            const qy = lineRect.top - letterRect.top + lineRect.height * 0.56;
+            const dy = Math.sin(elapsed * 26) * 3.2;
+            const rot = Math.cos(elapsed * 19) * 5.5;
+            parchmentQuill.style.transform = `translate3d(${(qx - 4).toFixed(1)}px, ${(qy - 30 + dy).toFixed(1)}px, 0) rotate(${rot.toFixed(1)}deg)`;
+
+            updateQuillSound(true, elapsed * 21.0);
+
+            if (rawU >= 1) {
+              cur.el.style.setProperty('--write-p', '100%');
+              cur.el.classList.add('is-done');
+              if (cur.pauseAfter > 0) {
+                inPause = true;
+                phaseStart = now;
+                updateQuillSound(false, 0);
+              } else {
+                phaseIdx++;
+              }
             }
-            const delay = ch === ' ' ? 50 : 72 + Math.random() * 24;
-            scheduleLetterTimer(stepSign, delay);
           } else {
-            parchmentCursor.classList.remove('is-active');
-            // 문장 완료 후 잠시 여운 뒤 편지가 날아가며 밤하늘을 비추고 인트로로 연결
+            updateQuillSound(false, 0);
+            if (elapsed >= cur.pauseAfter) {
+              inPause = false;
+              phaseIdx++;
+              phaseStart = now;
+            }
+          }
+
+          if (phaseIdx >= phases.length) {
+            parchmentQuill.classList.remove('is-writing');
+            stopQuillSound();
             scheduleLetterTimer(() => {
               if (introFinished) return;
               parchmentLetter.classList.add('is-flying');
               startIntro();
             }, 950);
+            return;
           }
+
+          handwriteRafId = requestAnimationFrame(stepHandwrite);
         }
 
-        stepBody();
+        handwriteRafId = requestAnimationFrame(stepHandwrite);
       }
 
       function onWaxSealClick() {
@@ -2385,7 +2504,7 @@
           envelopeEntrance.classList.add('is-leaving');
         }, 620);
 
-        // 3) 봉투 스테이지 정리 후 사각거리며 한 글자씩 적힘
+        // 3) 봉투 스테이지 정리 후 사각거리며 한 획씩 필기 시작
         scheduleLetterTimer(() => {
           if (introFinished) return;
           letterStage.classList.add('is-hidden');
@@ -2400,12 +2519,13 @@
         introFinished = true;
         introRunning = false;
         clearLetterTimers();
+        stopQuillSound();
         if (introRafId) cancelAnimationFrame(introRafId);
 
         skipIntroBtn.style.display = 'none';
         letterStage.classList.add('is-hidden');
         parchmentLetter.classList.remove('is-visible', 'is-flying');
-        parchmentCursor.classList.remove('is-active');
+        parchmentQuill.classList.remove('is-writing');
         introOverlay.classList.add('is-fading-out');
 
         if (immediateAll) {
