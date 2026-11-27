@@ -453,10 +453,10 @@
 
     .parchment-letter.is-flying {
       opacity: 0;
-      transform: translate(-50%, -148%) scale(0.22) rotate(-14deg);
+      transform: translate(-52%, -132%) scale(0.14) rotate(-10deg);
       transition:
-        transform 1.55s cubic-bezier(0.32, 0.02, 0.25, 1),
-        opacity 1.35s ease 0.25s;
+        transform 1.15s cubic-bezier(0.25, 0.08, 0.25, 1),
+        opacity 0.32s ease 0.92s;
     }
 
     .parchment-crest {
@@ -1387,7 +1387,7 @@
       const parchmentSignText = document.getElementById('parchmentSignText');
       const parchmentCursor = document.getElementById('parchmentCursor');
 
-      const SKY_BRIDGE_DURATION = 3.6;
+      const SKY_BRIDGE_DURATION = 5.8;
       const SCENE_JOIN_T = 2.3;
       const BASE_INTRO_END = 14.8;
       const INTRO_DURATION = SKY_BRIDGE_DURATION + (BASE_INTRO_END - SCENE_JOIN_T);
@@ -1831,6 +1831,294 @@
         ctx.restore();
       }
 
+      /* 밤하늘 구름 레이어 (올빼미가 사이로 날아들어가는 깊이감) */
+      function drawNightClouds(ctx, w, h, elapsed, tiltDown, layer, alpha) {
+        if (alpha <= 0.005) return;
+        const drift = elapsed * (layer === 'back' ? 6 : 10);
+        const riseOffset = -tiltDown * h * 0.34;
+
+        const clouds = layer === 'back'
+          ? [
+              { x: 0.14, y: 0.15, rx: 0.19, ry: 0.055, tone: 'rgba(18, 42, 76, 0.72)' },
+              { x: 0.32, y: 0.21, rx: 0.21, ry: 0.062, tone: 'rgba(24, 54, 94, 0.68)' },
+              { x: 0.76, y: 0.18, rx: 0.22, ry: 0.055, tone: 'rgba(16, 38, 70, 0.56)' }
+            ]
+          : [
+              { x: 0.21, y: 0.19, rx: 0.17, ry: 0.05, tone: 'rgba(28, 64, 110, 0.78)' },
+              { x: 0.08, y: 0.24, rx: 0.16, ry: 0.048, tone: 'rgba(20, 48, 86, 0.74)' },
+              { x: 0.37, y: 0.13, rx: 0.15, ry: 0.042, tone: 'rgba(34, 74, 122, 0.64)' }
+            ];
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        clouds.forEach((c, idx) => {
+          const cx = c.x * w + drift * (idx % 2 === 0 ? 1 : -0.6);
+          const cy = c.y * h + riseOffset;
+          const rad = Math.max(w, h) * c.rx;
+
+          const grad = ctx.createRadialGradient(cx, cy - rad * 0.12, rad * 0.12, cx, cy, rad);
+          grad.addColorStop(0, c.tone);
+          grad.addColorStop(0.6, c.tone.replace(/0\.\d+\)$/, '0.32)'));
+          grad.addColorStop(1, 'rgba(8, 22, 46, 0)');
+          ctx.fillStyle = grad;
+
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, rad, Math.max(w, h) * c.ry * 1.45, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 구름 윗면 은은한 달빛 하이라이트
+          const rim = ctx.createRadialGradient(cx + rad * 0.12, cy - rad * 0.14, 2, cx, cy, rad * 0.75);
+          rim.addColorStop(0, 'rgba(162, 208, 245, 0.14)');
+          rim.addColorStop(1, 'rgba(162, 208, 245, 0)');
+          ctx.fillStyle = rim;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy - rad * 0.06, rad * 0.72, Math.max(w, h) * c.ry * 0.85, 0, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.restore();
+      }
+
+      /* 하늘로 멀어져 떠있는 편지 (올빼미가 낚아채기 전까지) */
+      function drawFlyingLetter(ctx, x, y, scale, rot, alpha) {
+        if (alpha <= 0.005) return;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(x, y);
+        ctx.rotate(rot);
+        ctx.scale(scale, scale);
+
+        // 은은한 달빛 테두리 후광
+        const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, 34);
+        glow.addColorStop(0, 'rgba(255, 242, 205, 0.34)');
+        glow.addColorStop(1, 'rgba(255, 242, 205, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, 34, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 양피지 편지 몸통
+        ctx.fillStyle = '#efe1bf';
+        ctx.strokeStyle = 'rgba(120, 88, 44, 0.7)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(-13, -17, 26, 34, 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 편지 위 잉크 줄 흔적
+        ctx.strokeStyle = 'rgba(72, 50, 26, 0.45)';
+        ctx.lineWidth = 1.1;
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.moveTo(-8, i * 6);
+          ctx.lineTo(8, i * 6);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      /* 단순화되었지만 한눈에 알아볼 수 있는 흰올빼미(Snowy Owl) 비행 렌더러 */
+      function drawSnowyOwl(ctx, x, y, scale, elapsed, hasLetter, catchSpark, alpha) {
+        if (alpha <= 0.005) return;
+        const flapPhase = elapsed * 16.0;
+        const w1 = Math.sin(flapPhase);
+        const w2 = Math.sin(flapPhase - 0.68);
+        const bodyBob = -w1 * 3.5;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(x, y + bodyBob);
+        ctx.scale(scale, scale);
+
+        // 포획 순간 달빛 스파크
+        if (catchSpark > 0.01) {
+          const sparkR = 38 * (1.2 - catchSpark * 0.5);
+          const sg = ctx.createRadialGradient(0, 14, 2, 0, 14, sparkR);
+          sg.addColorStop(0, `rgba(255, 246, 200, ${0.75 * catchSpark})`);
+          sg.addColorStop(0.5, `rgba(186, 226, 255, ${0.35 * catchSpark})`);
+          sg.addColorStop(1, 'rgba(186, 226, 255, 0)');
+          ctx.fillStyle = sg;
+          ctx.beginPath();
+          ctx.arc(0, 14, sparkR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 1) 둥글고 넓은 양쪽 날개 (카메라 뒤 우측→좌측 상단 대각선 비행 원근)
+        function drawWing(side) {
+          // side: 1 = 뒤/오른쪽 날개, -1 = 앞/왼쪽 날개
+          const lenFactor = side === 1 ? 1.04 : 0.92;
+          const lift = w1 * 32;
+          const tipLift = w2 * 22;
+
+          const shX = side * 7;
+          const shY = -2;
+          const midX = side * 34 * lenFactor;
+          const midY = -12 - lift * 0.65;
+          const tipX = side * 66 * lenFactor;
+          const tipY = -6 - lift - tipLift * 0.45;
+          const trailX = side * 30 * lenFactor;
+          const trailY = 16 - lift * 0.28;
+
+          const wg = ctx.createLinearGradient(shX, shY, tipX, tipY);
+          wg.addColorStop(0, '#eef4fc');
+          wg.addColorStop(0.6, '#ffffff');
+          wg.addColorStop(1, '#dbe6f5');
+
+          ctx.fillStyle = wg;
+          ctx.beginPath();
+          ctx.moveTo(shX, shY - 5);
+          ctx.quadraticCurveTo(midX * 0.65, midY - 12, midX, midY);
+          ctx.quadraticCurveTo((midX + tipX) * 0.52, (midY + tipY) * 0.5 - 8, tipX, tipY);
+          // 둥근 1차 날개깃 끝
+          ctx.quadraticCurveTo(tipX - side * 8, tipY + 13, trailX + side * 14, trailY + 2);
+          ctx.quadraticCurveTo(trailX * 0.6, trailY + 7, shX - side * 2, shY + 9);
+          ctx.closePath();
+          ctx.fill();
+
+          // 흰올빼미 특유의 날개 위 어두운 반점 무늬 (단순화)
+          ctx.fillStyle = 'rgba(54, 68, 92, 0.52)';
+          const spots = [
+            [0.45, -1],
+            [0.62, 1],
+            [0.78, 0]
+          ];
+          spots.forEach(([f, dy]) => {
+            const sx = lerp(shX, tipX, f);
+            const sy = lerp(shY, tipY, f) + 4 + dy * 2;
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, 3.6, 1.4, side * -0.25, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+
+        // 뒤쪽(오른쪽) 날개 먼저
+        drawWing(1);
+
+        // 2) 부채꼴 짧은 꼬리 깃털
+        ctx.fillStyle = '#dce7f5';
+        ctx.beginPath();
+        ctx.moveTo(-4, 12);
+        ctx.lineTo(10, 29);
+        ctx.quadraticCurveTo(17, 30, 21, 23);
+        ctx.lineTo(7, 10);
+        ctx.closePath();
+        ctx.fill();
+
+        // 3) 잡힌 편지 (발 아래 매달림) 또는 발톱
+        if (hasLetter) {
+          ctx.save();
+          ctx.translate(-3, 18);
+          ctx.rotate(-0.18 + w1 * 0.08);
+          ctx.fillStyle = '#efe0bc';
+          ctx.strokeStyle = 'rgba(110, 78, 36, 0.72)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(-8, -5, 16, 11, 1.5);
+          ctx.fill();
+          ctx.stroke();
+          // 작은 붉은 왁스 인장 점
+          ctx.fillStyle = '#921a16';
+          ctx.beginPath();
+          ctx.arc(0, 0, 2.1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 4) 유선형 흰 몸통 & 크고 둥근 올빼미 머리
+        const bodyGrad = ctx.createLinearGradient(-10, -14, 10, 14);
+        bodyGrad.addColorStop(0, '#ffffff');
+        bodyGrad.addColorStop(1, '#d3dfef');
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.ellipse(0, 3, 10.5, 14, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 앞쪽(왼쪽) 날개
+        drawWing(-1);
+
+        // 크고 둥근 머리 (좌측 진행 방향을 살짝 바라봄)
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-5.5, -10.5, 8.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 올빼미 안면 원반 & 노란 눈 점 & 작은 검은 부리
+        ctx.fillStyle = '#eef4fc';
+        ctx.beginPath();
+        ctx.ellipse(-8, -10, 5.2, 5.8, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#f6c744';
+        ctx.beginPath();
+        ctx.arc(-9.2, -10.8, 1.45, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#1e2430';
+        ctx.beginPath();
+        ctx.arc(-9.4, -10.8, 0.7, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#252a36';
+        ctx.beginPath();
+        ctx.moveTo(-13.2, -10.5);
+        ctx.lineTo(-16.2, -9.2);
+        ctx.lineTo(-13.0, -8.0);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      /* 편지 부유 → 흰올빼미 비행·포획 → 구름 속 진입 연출 */
+      function drawOwlBridgeScene(ctx, w, h, elapsed, skyAlpha, tiltDown) {
+        if (elapsed >= SKY_BRIDGE_DURATION) return;
+
+        const catchTime = 2.65;
+        const letterTargetX = w * 0.48;
+        const letterTargetY = h * 0.29;
+
+        // 뒤쪽 구름 먼저 그리기
+        const cloudAlpha = skyAlpha * (1 - smoothstep(4.3, SKY_BRIDGE_DURATION, elapsed));
+        drawNightClouds(ctx, w, h, elapsed, tiltDown, 'back', cloudAlpha);
+
+        // 1) 포획 전 하늘에 떠 있는 편지 (CSS 편지 0.92~1.24s와 자연스럽게 교차)
+        if (elapsed >= 0.85 && elapsed < catchTime) {
+          const letterIn = smoothstep(0.85, 1.2, elapsed);
+          const bobY = Math.sin(elapsed * 3.2) * 3;
+          drawFlyingLetter(ctx, letterTargetX, letterTargetY + bobY, 0.86, -0.16 + Math.sin(elapsed * 2.1) * 0.05, letterIn * skyAlpha);
+        }
+
+        // 2) 흰올빼미 비행 (우측 맨 끝 뒤 → 편지 포획 → 좌측 중반 구름 사이로 진입)
+        if (elapsed >= 1.15 && elapsed <= 4.7) {
+          let ox, oy, oScale, oAlpha;
+          const hasLetter = elapsed >= catchTime;
+          const catchSpark = hasLetter ? Math.max(0, 1 - (elapsed - catchTime) / 0.42) : 0;
+
+          if (elapsed < catchTime) {
+            const u = clamp((elapsed - 1.15) / (catchTime - 1.15), 0, 1);
+            const ease = 1 - Math.pow(1 - u, 1.65);
+            // 우측 맨 끝 뒤에서 출발해 포물선을 그리며 편지 위치로 급접근
+            ox = lerp(w * 1.14, letterTargetX, ease);
+            oy = lerp(h * 0.9, letterTargetY, ease) + Math.sin(u * Math.PI) * (h * 0.06);
+            oScale = lerp(2.45, 0.72, Math.pow(u, 0.75)) * Math.min(1.15, Math.max(0.82, w / 390));
+            oAlpha = smoothstep(1.15, 1.42, elapsed) * skyAlpha;
+          } else {
+            const v = clamp((elapsed - catchTime) / (4.55 - catchTime), 0, 1);
+            const easeOut = Math.pow(v, 0.92);
+            // 편지를 낚아챈 뒤 좌측 중반·상단 구름 사이로 날아 들어감
+            ox = lerp(letterTargetX, w * 0.21, easeOut);
+            oy = lerp(letterTargetY, h * 0.17, easeOut) - Math.sin(v * Math.PI) * (h * 0.025) - tiltDown * h * 0.18;
+            oScale = lerp(0.72, 0.24, v) * Math.min(1.15, Math.max(0.82, w / 390));
+            oAlpha = (1 - smoothstep(3.92, 4.55, elapsed)) * skyAlpha;
+          }
+
+          drawSnowyOwl(ctx, ox, oy, oScale, elapsed, hasLetter, catchSpark, oAlpha);
+        }
+
+        // 앞쪽 구름 그리기 (올빼미가 구름 사이/뒤로 파고드는 입체감)
+        drawNightClouds(ctx, w, h, elapsed, tiltDown, 'front', cloudAlpha);
+      }
+
       /* 메인 인트로 프레임 렌더러 */
       function renderIntroFrame(elapsed) {
         const w = window.innerWidth;
@@ -1844,8 +2132,8 @@
           ? SCENE_JOIN_T * (elapsed / SKY_BRIDGE_DURATION)
           : SCENE_JOIN_T + (elapsed - SKY_BRIDGE_DURATION);
 
-        const skyFade = isSkyBridge ? smoothstep(0.0, 1.35, elapsed) : 1;
-        const tiltDown = isSkyBridge ? smoothstep(1.25, SKY_BRIDGE_DURATION, elapsed) : 1;
+        const skyFade = isSkyBridge ? smoothstep(0.0, 1.15, elapsed) : 1;
+        const tiltDown = isSkyBridge ? smoothstep(4.15, SKY_BRIDGE_DURATION, elapsed) : 1;
         const sceneOut = isSkyBridge ? 1 : 1 - smoothstep(12.75, 13.85, t);
         const sceneAlpha = skyFade * sceneOut;
 
@@ -1932,6 +2220,11 @@
 
           // 3) 호수 건너편 호그와트풍 성
           drawCastle(ctx, w, h, horizonY, cameraRise, t, sceneAlpha);
+
+          // 3-B) 편지 부유 → 흰올빼미 포획 → 구름 사이 진입
+          if (isSkyBridge) {
+            drawOwlBridgeScene(ctx, w, h, elapsed, skyFade, tiltDown);
+          }
 
           // 4) 등불을 켠 목선들 (서로 다른 깊이와 속도)
           const boatPresence = isSkyBridge ? 0 : smoothstep(2.3, 3.7, t) * (1 - smoothstep(9.7, 11.9, t));
