@@ -511,24 +511,6 @@
       mask-image: none;
     }
 
-    .parchment-quill {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 34px;
-      height: 34px;
-      pointer-events: none;
-      opacity: 0;
-      z-index: 5;
-      transform-origin: 4px 30px;
-      filter: drop-shadow(1px 3px 3px rgba(36, 20, 6, 0.38));
-      transition: opacity 0.22s ease;
-    }
-
-    .parchment-quill.is-writing {
-      opacity: 1;
-    }
-
     .parchment-sign {
       margin: 18px 0 4px;
       font-size: clamp(15px, 3.8vw, 17px);
@@ -1322,12 +1304,6 @@
         </p>
       </div>
       <p class="parchment-sign"><span id="handwriteSign" class="handwrite-line">- 샬롬자유학교 -</span></p>
-      <!-- 필기 궤적을 따라가는 깃펜 -->
-      <svg id="parchmentQuill" class="parchment-quill" viewBox="0 0 64 64" aria-hidden="true">
-        <path d="M8,56 L16,44 L54,8 C56,14 52,26 42,36 L22,48 Z" fill="#f7eed7" stroke="#3a2715" stroke-width="2" stroke-linejoin="round" />
-        <path d="M12,52 L48,14" stroke="#785630" stroke-width="1.6" stroke-linecap="round" />
-        <path d="M6,58 L14,49 L17,52 Z" fill="#23170c" />
-      </svg>
     </article>
 
     <button id="skipIntroBtn" class="intro-skip-btn" type="button" aria-label="인트로 건너뛰기">건너뛰기</button>
@@ -1557,7 +1533,6 @@
       const handwriteLine1 = document.getElementById('handwriteLine1');
       const handwriteLine2 = document.getElementById('handwriteLine2');
       const handwriteSign = document.getElementById('handwriteSign');
-      const parchmentQuill = document.getElementById('parchmentQuill');
       const handwriteLines = [handwriteLine1, handwriteLine2, handwriteSign];
 
       const SKY_BRIDGE_DURATION = 3.6;
@@ -2373,7 +2348,6 @@
         envelopeFlap.classList.remove('is-open');
         waxSealBtn.classList.remove('is-cracked', 'is-highlighted');
         parchmentLetter.classList.remove('is-visible', 'is-flying');
-        parchmentQuill.classList.remove('is-writing');
         stopQuillSound();
         handwriteLines.forEach((el) => {
           el.classList.remove('is-done');
@@ -2407,7 +2381,6 @@
         let inPause = false;
 
         startQuillSound();
-        parchmentQuill.classList.add('is-writing');
 
         function stepHandwrite(now) {
           if (introFinished) {
@@ -2427,15 +2400,6 @@
               : 0;
             const pct = clamp((rawU + strokeRipple) * 100, 0, 100);
             cur.el.style.setProperty('--write-p', `${pct.toFixed(2)}%`);
-
-            // 깃펜 펜촉 위치 동기화 및 손목 필기 진동
-            const letterRect = parchmentLetter.getBoundingClientRect();
-            const lineRect = cur.el.getBoundingClientRect();
-            const qx = lineRect.left - letterRect.left + lineRect.width * (pct / 100);
-            const qy = lineRect.top - letterRect.top + lineRect.height * 0.56;
-            const dy = Math.sin(elapsed * 26) * 3.2;
-            const rot = Math.cos(elapsed * 19) * 5.5;
-            parchmentQuill.style.transform = `translate3d(${(qx - 4).toFixed(1)}px, ${(qy - 30 + dy).toFixed(1)}px, 0) rotate(${rot.toFixed(1)}deg)`;
 
             updateQuillSound(true, elapsed * 21.0);
 
@@ -2460,7 +2424,6 @@
           }
 
           if (phaseIdx >= phases.length) {
-            parchmentQuill.classList.remove('is-writing');
             stopQuillSound();
             scheduleLetterTimer(() => {
               if (introFinished) return;
@@ -2525,7 +2488,6 @@
         skipIntroBtn.style.display = 'none';
         letterStage.classList.add('is-hidden');
         parchmentLetter.classList.remove('is-visible', 'is-flying');
-        parchmentQuill.classList.remove('is-writing');
         introOverlay.classList.add('is-fading-out');
 
         if (immediateAll) {
